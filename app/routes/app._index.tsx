@@ -1,176 +1,172 @@
-import { useEffect, useState } from "react";
-import type { LoaderFunctionArgs } from "@remix-run/node";
-import { json, redirect } from "@remix-run/node";
-import { useFetcher } from "@remix-run/react";
+import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
+import { Form, useLoaderData, useActionData, useNavigation, useSubmit } from "@remix-run/react";
 import {
   Page,
   Layout,
   Card,
+  Button,
   BlockStack,
-  Text,
-  Select,
   TextField,
-  Spinner,
+  RadioButton,
+  Checkbox,
+  Banner,
+  PageActions,
 } from "@shopify/polaris";
-import { TitleBar } from "@shopify/app-bridge-react";
+import { useState, useCallback, useEffect } from "react";
+import db from "../db.server";
 import { authenticate } from "../shopify.server";
 
+// Loader to get current settings
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  await authenticate.admin(request);
-  // Optionally, pass shop info if needed
-  return null;
+  const { session } = await authenticate.admin(request);
+  const shopSettings = await db.shopSettings.findUnique({
+    where: { shop: session.shop },
+  });
+  // Create default settings if none exist
+  if (!shopSettings) {
+    const defaultSettings = await db.shopSettings.create({
+      data: {
+        shop: session.shop,
+        position: "bottom-right",
+        isEnabled: true,
+        buttonText: "Add to Cart",
+      },
+    });
+    return json({ settings: defaultSettings, shop: session.shop });
+  }
+  return json({ settings: shopSettings, shop: session.shop });
 };
 
-const CORNER_OPTIONS = [
-  { label: "Top Left", value: "TOP_LEFT" },
-  { label: "Top Right", value: "TOP_RIGHT" },
-  { label: "Bottom Left", value: "BOTTOM_LEFT" },
-  { label: "Bottom Right", value: "BOTTOM_RIGHT" },
-];
+// Action to save settings
+export const action = async ({ request }: ActionFunctionArgs) => {
+  const { session } = await authenticate.admin(request);
+  const formData = await request.formData();
 
-export default function ShopSettingsPage() {
-  const fetcher = useFetcher();
-  const [shop, setShop] = useState<string>("");
-  const [corner, setCorner] = useState<string>("BOTTOM_RIGHT");
-  const [paddingX, setPaddingX] = useState<number>(16);
-  const [paddingY, setPaddingY] = useState<number>(16);
-  const [loading, setLoading] = useState(true);
+  const position = formData.get("position") as string;
+  // Checkbox: value is "on" if checked, null if not present
+  const isEnabled = formData.get("isEnabled") === "on";
+  const buttonText = formData.get("buttonText") as string;
 
-  // Fetch shop domain from window.Shopify if available
-  useEffect(() => {
-    // Try to get shop from App Bridge or window.Shopify
-    let shopDomain = "";
-    if (window.Shopify && window.Shopify.shop) {
-      shopDomain = window.Shopify.shop;
-    } else if (window.location.search.includes("shop=")) {
-      const params = new URLSearchParams(window.location.search);
-      shopDomain = params.get("shop") || "";
-    }
-    setShop(shopDomain);
-
-    if (shopDomain) {
-      // Fetch settings
-      const fetchSettings = async () => {
-        setLoading(true);
-        try {
-          const rawQuery = `shop=${shopDomain}`;
-          const hmac = await getHmac(rawQuery);
-          const res = await fetch(`/api/shop-settings?shop=${encodeURIComponent(shopDomain)}`, {
-            headers: { "x-shop-settings-hmac": hmac },
-          });
-          if (res.ok) {
-            const data = await res.json();
-            setCorner(data.corner || "BOTTOM_RIGHT");
-            setPaddingX(data.paddingX ?? 16);
-            setPaddingY(data.paddingY ?? 16);
-          }
-        } finally {
-          setLoading(false);
-        }
-      };
-      fetchSettings();
-    }
-  }, []);
-
-  // Auto-save on change
-  useEffect(() => {
-    if (!shop || loading) return;
-    const save = async () => {
-      const body = JSON.stringify({ shop, corner, paddingX, paddingY });
-      const hmac = await getHmac(body);
-      await fetch("/api/shop-settings", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-shop-settings-hmac": hmac,
-        },
-        body,
-      });
-    };
-    save();
-  }, [shop, corner, paddingX, paddingY]);
-
-  // Live preview: send settings to iframe
-  useEffect(() => {
-    if (loading) return;
-    const iframe = document.getElementById("sticky-preview-iframe") as HTMLIFrameElement | null;
-    if (iframe && iframe.contentWindow) {
-      iframe.contentWindow.postMessage(
-        { corner, paddingX, paddingY },
-        "*"
-      );
-    }
-  }, [loading, corner, paddingX, paddingY]);
-
-  if (loading) {
-    return (
-      <Page>
-        <BlockStack gap="500" align="center">
-          <Spinner accessibilityLabel="Loading settings" size="large" />
-        </BlockStack>
-      </Page>
-    );
+  try {
+    await db.shopSettings.upsert({
+      where: { shop: session.shop },
+      update: { position, isEnabled, buttonText },
+      create: { shop: session.shop, position, isEnabled, buttonText },
+    });
+    return json({ success: true, message: "Settings saved successfully!" });
+  } catch (error) {
+    console.error("Failed to save settings:", error);
+    return json({ success: false, message: "Failed to save settings.", error: String(error) }, { status: 500 });
   }
+};
+
+export default function SettingsPage() {
+  const { settings } = useLoaderData<typeof loader>();
+  const actionData = useActionData<typeof action>();
+  const navigation = useNavigation();
+
+  const [currentPosition, setCurrentPosition] = useState(settings?.position || "bottom-right");
+  const [isEnabled, setIsEnabled] = useState(settings?.isEnabled !== undefined ? settings.isEnabled : true);
+  const [buttonText, setButtonText] = useState(settings?.buttonText || "Add to Cart");
+  const [showBanner, setShowBanner] = useState(true);
+
+  // Update state if loader data changes (e.g., after form submission and revalidation)
+  useEffect(() => {
+    if (settings) {
+      setCurrentPosition(settings.position);
+      setIsEnabled(settings.isEnabled);
+      setButtonText(settings.buttonText);
+    }
+  }, [settings]);
+
+  useEffect(() => {
+    if (actionData?.message) setShowBanner(true);
+  }, [actionData]);
+
+  const isLoading = navigation.state === "submitting" || navigation.state === "loading";
 
   return (
-    <Page>
-      <TitleBar title="Sticky Add to Cart Settings" />
+    <Page
+      title="Sticky Add to Cart Settings"
+      primaryAction={{
+        content: "Save settings",
+        onAction: () => {
+          // Submit the form programmatically
+          const form = document.getElementById("settings-form") as HTMLFormElement | null;
+          if (form) form.requestSubmit();
+        },
+        loading: isLoading,
+      }}
+    >
       <Layout>
         <Layout.Section>
+          {actionData?.message && showBanner && (
+            <Banner
+              title={actionData.success ? "Success" : "Error"}
+              tone={actionData.success ? "success" : "critical"}
+              onDismiss={() => setShowBanner(false)}
+            >
+              <p>{actionData.message}</p>
+            </Banner>
+          )}
           <Card>
-            <BlockStack gap="400">
-              <Text as="h2" variant="headingMd">
-                Sticky Add to Cart Button Settings
-              </Text>
-              <Select
-                label="Corner"
-                options={CORNER_OPTIONS}
-                value={corner}
-                onChange={setCorner}
-              />
-              <TextField
-                label="Padding X (px)"
-                type="number"
-                value={paddingX.toString()}
-                onChange={(v) => setPaddingX(Number(v))}
-                autoComplete="off"
-              />
-              <TextField
-                label="Padding Y (px)"
-                type="number"
-                value={paddingY.toString()}
-                onChange={(v) => setPaddingY(Number(v))}
-                autoComplete="off"
-              />
-            </BlockStack>
+            <Form method="post" id="settings-form">
+              <BlockStack gap="400">
+                <BlockStack gap="200">
+                  <label style={{ fontWeight: 500, marginBottom: 4 }}>Position</label>
+                  <RadioButton
+                    label="Bottom Left"
+                    id="bottom-left"
+                    name="position"
+                    checked={currentPosition === "bottom-left"}
+                    onChange={() => setCurrentPosition("bottom-left")}
+                  />
+                  <RadioButton
+                    label="Bottom Right"
+                    id="bottom-right"
+                    name="position"
+                    checked={currentPosition === "bottom-right"}
+                    onChange={() => setCurrentPosition("bottom-right")}
+                  />
+                </BlockStack>
+                <Checkbox
+                  label="Enable Sticky Add to Cart Bar"
+                  checked={isEnabled}
+                  onChange={setIsEnabled}
+                  name="isEnabled"
+                />
+                <TextField
+                  label="Button Text"
+                  value={buttonText}
+                  onChange={setButtonText}
+                  autoComplete="off"
+                  name="buttonText"
+                />
+                <div>
+                  <Button
+                    submit
+                    variant="primary"
+                    loading={isLoading}
+                    disabled={isLoading}
+                  >
+                    Save
+                  </Button>
+                </div>
+              </BlockStack>
+            </Form>
           </Card>
         </Layout.Section>
-        <Layout.Section>
+        <Layout.Section variant="oneThird">
           <Card>
             <BlockStack gap="200">
-              <Text as="h3" variant="headingMd">
-                Live Preview
-              </Text>
-              <div style={{ border: "1px solid #eee", borderRadius: 8, overflow: "hidden", height: 400 }}>
-                <iframe
-                  id="sticky-preview-iframe"
-                  src="/preview.html"
-                  title="Sticky Add to Cart Preview"
-                  style={{ width: "100%", height: 400, border: "none" }}
-                />
-              </div>
+              <h3 style={{ fontWeight: 600, margin: 0 }}>Preview</h3>
+              <p>Position: {currentPosition}</p>
+              <p>Enabled: {isEnabled ? "Yes" : "No"}</p>
+              <p>Button Text: {buttonText}</p>
             </BlockStack>
           </Card>
         </Layout.Section>
       </Layout>
     </Page>
   );
-}
-
-// Utility: get HMAC for a string using the same secret as the backend
-async function getHmac(message: string): Promise<string> {
-  // In production, this should be done server-side or via a secure endpoint.
-  // For demo/dev, use a placeholder or fetch from a secure endpoint.
-  // Here, we just return a dummy value for local dev.
-  return "dummy-hmac";
 }

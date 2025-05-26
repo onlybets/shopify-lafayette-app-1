@@ -46,13 +46,13 @@ enum SubscriptionStatus {
 }
 
 model ShopSettings {
-  id        String   @id @default(cuid())
-  shop      String   @unique
-  corner    Corner
-  paddingX  Int
-  paddingY  Int
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String   @id @default(cuid())
+  shop       String   @unique
+  position   String   @default("bottom-right")
+  isEnabled  Boolean  @default(true)
+  buttonText String   @default("Add to Cart")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
 model Subscription {

@@ -1,30 +1,17 @@
 // Sticky Add to Cart extension script
 
 (function () {
-  // Read settings from window.__SHOP_SETTINGS__
-  const settings = window.__SHOP_SETTINGS__ || {
-    corner: "BOTTOM_RIGHT",
-    paddingX: 16,
-    paddingY: 16,
-  };
-
-  // License check: call /api/license?shop=...
-  async function checkLicense() {
-    const shop = settings.shop || (window.Shopify && window.Shopify.shop);
-    if (!shop) return false;
-    try {
-      const res = await fetch(`/api/license?shop=${encodeURIComponent(shop)}`);
-      if (!res.ok) return false;
-      const data = await res.json();
-      return !!data.active;
-    } catch {
-      return false;
+  // Utility: get shop domain from window.Shopify or URL
+  function getShopDomain() {
+    if (window.Shopify && window.Shopify.shop) {
+      return window.Shopify.shop;
     }
+    const params = new URLSearchParams(window.location.search);
+    return params.get("shop");
   }
 
   // Utility: get productId from product page (works for most OS 2.0 themes)
   function getProductId() {
-    // Try to find product form input[name="id"]
     const input = document.querySelector('form[action^="/cart/add"] input[name="id"]');
     return input ? input.value : null;
   }
@@ -44,26 +31,45 @@
     );
   }
 
-  // Create sticky button
-  function createStickyButton() {
-    if (document.getElementById("lafayette-sticky-atc")) return;
-    const btn = document.createElement("button");
-    btn.id = "lafayette-sticky-atc";
-    btn.innerText = "Add to Cart";
-    btn.style.position = "fixed";
-    btn.style.zIndex = "9999";
-    btn.style.background = "#111";
-    btn.style.color = "#fff";
-    btn.style.border = "none";
-    btn.style.borderRadius = "8px";
-    btn.style.padding = "12px 32px";
-    btn.style.fontSize = "18px";
-    btn.style.cursor = "pointer";
-    btn.style.boxShadow = "0 2px 8px rgba(0,0,0,0.08)";
-    btn.style.transition = "all 0.3s";
-    setButtonPosition(btn, settings.corner, settings.paddingX, settings.paddingY);
+  // Set button position based on settings.position
+  function setButtonPosition(btn, position) {
+    btn.style.top = btn.style.right = btn.style.bottom = btn.style.left = "auto";
+    switch (position) {
+      case "bottom-left":
+        btn.style.bottom = "20px";
+        btn.style.left = "20px";
+        break;
+      case "bottom-right":
+      default:
+        btn.style.bottom = "20px";
+        btn.style.right = "20px";
+        break;
+    }
+  }
 
-    btn.addEventListener("click", async function () {
+  // Create sticky button
+  function createStickyButton(settings) {
+    let btn = document.getElementById("lafayette-sticky-atc");
+    if (!btn) {
+      btn = document.createElement("button");
+      btn.id = "lafayette-sticky-atc";
+      btn.style.position = "fixed";
+      btn.style.zIndex = "9999";
+      btn.style.background = "#111";
+      btn.style.color = "#fff";
+      btn.style.border = "none";
+      btn.style.borderRadius = "8px";
+      btn.style.padding = "12px 32px";
+      btn.style.fontSize = "18px";
+      btn.style.cursor = "pointer";
+      btn.style.boxShadow = "0 2px 8px rgba(0,0,0,0.08)";
+      btn.style.transition = "all 0.3s";
+      document.body.appendChild(btn);
+    }
+    btn.innerText = settings.buttonText || "Add to Cart";
+    setButtonPosition(btn, settings.position);
+
+    btn.onclick = async function () {
       const productId = getProductId();
       if (!productId) {
         alert("No product found.");
@@ -79,7 +85,7 @@
         });
         if (res.ok) {
           btn.innerText = "Added!";
-          setTimeout(() => (btn.innerText = "Add to Cart"), 1500);
+          setTimeout(() => (btn.innerText = settings.buttonText || "Add to Cart"), 1500);
         } else {
           btn.innerText = "Error";
         }
@@ -87,84 +93,78 @@
         btn.innerText = "Error";
       }
       btn.disabled = false;
-    });
-
-    document.body.appendChild(btn);
-  }
-
-  // Set button position based on settings
-  function setButtonPosition(btn, corner, paddingX, paddingY) {
-    btn.style.top = btn.style.right = btn.style.bottom = btn.style.left = "auto";
-    switch (corner) {
-      case "TOP_LEFT":
-        btn.style.top = paddingY + "px";
-        btn.style.left = paddingX + "px";
-        break;
-      case "TOP_RIGHT":
-        btn.style.top = paddingY + "px";
-        btn.style.right = paddingX + "px";
-        break;
-      case "BOTTOM_LEFT":
-        btn.style.bottom = paddingY + "px";
-        btn.style.left = paddingX + "px";
-        break;
-      case "BOTTOM_RIGHT":
-      default:
-        btn.style.bottom = paddingY + "px";
-        btn.style.right = paddingX + "px";
-        break;
-    }
+    };
+    return btn;
   }
 
   // Hide/show sticky button based on native ATC visibility
-  function updateStickyVisibility() {
+  function updateStickyVisibility(settings) {
     const btn = document.getElementById("lafayette-sticky-atc");
     if (!btn) return;
     btn.style.display = isNativeATCVisible() ? "none" : "block";
+    setButtonPosition(btn, settings.position);
   }
 
   // IntersectionObserver fallback: poll every 500ms
-  function startVisibilityPolling() {
-    setInterval(updateStickyVisibility, 500);
+  function startVisibilityPolling(settings) {
+    setInterval(() => updateStickyVisibility(settings), 500);
   }
 
-  // Main logic
+  // Main logic: fetch settings and render sticky button if enabled
   async function main() {
-    // License check
-    const licensed = await checkLicense();
-    if (!licensed) {
-      // Optionally show a paywall or do nothing
-      return;
-    }
+    const shop = getShopDomain();
+    if (!shop) return;
 
-    createStickyButton();
-    updateStickyVisibility();
+    try {
+      const res = await fetch(`/api/storefront-settings?shop=${encodeURIComponent(shop)}`);
+      if (!res.ok) return;
+      const { data: settings } = await res.json();
+      if (!settings || !settings.isEnabled) {
+        // Remove sticky button if present
+        const btn = document.getElementById("lafayette-sticky-atc");
+        if (btn) btn.remove();
+        return;
+      }
 
-    // Try IntersectionObserver if available
-    const nativeBtn = document.querySelector('form[action^="/cart/add"] [type="submit"], form[action^="/cart/add"] button');
-    if (window.IntersectionObserver && nativeBtn) {
-      const observer = new IntersectionObserver(
-        (entries) => {
-          if (!entries.length) return;
-          const entry = entries[0];
-          const btn = document.getElementById("lafayette-sticky-atc");
-          if (!btn) return;
-          btn.style.display = entry.isIntersecting ? "none" : "block";
-        },
-        { threshold: 0.01 }
-      );
-      observer.observe(nativeBtn);
-    } else {
-      startVisibilityPolling();
+      createStickyButton(settings);
+      updateStickyVisibility(settings);
+
+      // Try IntersectionObserver if available
+      const nativeBtn = document.querySelector('form[action^="/cart/add"] [type="submit"], form[action^="/cart/add"] button');
+      if (window.IntersectionObserver && nativeBtn) {
+        const observer = new IntersectionObserver(
+          (entries) => {
+            if (!entries.length) return;
+            const entry = entries[0];
+            const btn = document.getElementById("lafayette-sticky-atc");
+            if (!btn) return;
+            btn.style.display = entry.isIntersecting ? "none" : "block";
+            setButtonPosition(btn, settings.position);
+          },
+          { threshold: 0.01 }
+        );
+        observer.observe(nativeBtn);
+      } else {
+        startVisibilityPolling(settings);
+      }
+    } catch (e) {
+      // Fail silently
     }
   }
 
   // Listen for settings updates (for live preview or dynamic updates)
   window.addEventListener("message", (event) => {
     if (!event.data || typeof event.data !== "object") return;
-    const { corner, paddingX, paddingY } = event.data;
+    const { position, isEnabled, buttonText } = event.data;
     const btn = document.getElementById("lafayette-sticky-atc");
-    if (btn) setButtonPosition(btn, corner, paddingX, paddingY);
+    if (btn) {
+      if (typeof isEnabled === "boolean" && !isEnabled) {
+        btn.remove();
+      } else {
+        if (position) setButtonPosition(btn, position);
+        if (buttonText) btn.innerText = buttonText;
+      }
+    }
   });
 
   // Wait for DOM ready
