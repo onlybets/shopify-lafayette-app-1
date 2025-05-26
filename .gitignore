@@ -4,6 +4,7 @@ node_modules/
 # Build output
 dist/
 build/
+public/build/
 
 # Environment variables
 .env
@@ -15,10 +16,15 @@ build/
 
 # Prisma
 .prisma/
-.prisma/migrations/
+# Ne pas ignorer migrations/ si versionnées
+# .prisma/migrations/  # décommentez si vous ne souhaitez pas versionner les migrations
 
 # Logs
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
 # macOS system files
 .DS_Store
@@ -34,6 +40,45 @@ build/
 
 # Cache files
 .cache/
+.next/
+out/
+.svelte-kit/
+.vercel/
+.netlify/
+firebase-debug.log
 
 # Database files (if any)
 *.sqlite
+
+# Test coverage
+coverage/
+
+# IDE files
+.idea/
+*.iml
+
+# OS temp files
+Thumbs.db
+
+# Local secrets or configs
+secret-config.json
+
+# Build info
+*.tsbuildinfo
+
+# Lock files (si vous n'utilisez pas ces gestionnaires)
+yarn.lock
+pnpm-lock.yaml
+
+# Docker
+*.local
+docker-compose.override.yml
+
+# Shopify
+.shopify/
+.shopify-app/
+.shopify-cli.yml
+
+# Misc
+*.swp
+*.swo
