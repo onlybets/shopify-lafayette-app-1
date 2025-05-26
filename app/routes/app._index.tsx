@@ -1,334 +1,175 @@
-import { useEffect } from "react";
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
+import { useEffect, useState } from "react";
+import type { LoaderFunctionArgs } from "@remix-run/node";
+import { json, redirect } from "@remix-run/node";
 import { useFetcher } from "@remix-run/react";
 import {
   Page,
   Layout,
-  Text,
   Card,
-  Button,
   BlockStack,
-  Box,
-  List,
-  Link,
-  InlineStack,
+  Text,
+  Select,
+  TextField,
+  Spinner,
 } from "@shopify/polaris";
-import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
+import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   await authenticate.admin(request);
-
+  // Optionally, pass shop info if needed
   return null;
 };
 
-export const action = async ({ request }: ActionFunctionArgs) => {
-  const { admin } = await authenticate.admin(request);
-  const color = ["Red", "Orange", "Yellow", "Green"][
-    Math.floor(Math.random() * 4)
-  ];
-  const response = await admin.graphql(
-    `#graphql
-      mutation populateProduct($product: ProductCreateInput!) {
-        productCreate(product: $product) {
-          product {
-            id
-            title
-            handle
-            status
-            variants(first: 10) {
-              edges {
-                node {
-                  id
-                  price
-                  barcode
-                  createdAt
-                }
-              }
-            }
-          }
-        }
-      }`,
-    {
-      variables: {
-        product: {
-          title: `${color} Snowboard`,
-        },
-      },
-    },
-  );
-  const responseJson = await response.json();
+const CORNER_OPTIONS = [
+  { label: "Top Left", value: "TOP_LEFT" },
+  { label: "Top Right", value: "TOP_RIGHT" },
+  { label: "Bottom Left", value: "BOTTOM_LEFT" },
+  { label: "Bottom Right", value: "BOTTOM_RIGHT" },
+];
 
-  const product = responseJson.data!.productCreate!.product!;
-  const variantId = product.variants.edges[0]!.node!.id!;
+export default function ShopSettingsPage() {
+  const fetcher = useFetcher();
+  const [shop, setShop] = useState<string>("");
+  const [corner, setCorner] = useState<string>("BOTTOM_RIGHT");
+  const [paddingX, setPaddingX] = useState<number>(16);
+  const [paddingY, setPaddingY] = useState<number>(16);
+  const [loading, setLoading] = useState(true);
 
-  const variantResponse = await admin.graphql(
-    `#graphql
-    mutation shopifyRemixTemplateUpdateVariant($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
-      productVariantsBulkUpdate(productId: $productId, variants: $variants) {
-        productVariants {
-          id
-          price
-          barcode
-          createdAt
-        }
-      }
-    }`,
-    {
-      variables: {
-        productId: product.id,
-        variants: [{ id: variantId, price: "100.00" }],
-      },
-    },
-  );
-
-  const variantResponseJson = await variantResponse.json();
-
-  return {
-    product: responseJson!.data!.productCreate!.product,
-    variant:
-      variantResponseJson!.data!.productVariantsBulkUpdate!.productVariants,
-  };
-};
-
-export default function Index() {
-  const fetcher = useFetcher<typeof action>();
-
-  const shopify = useAppBridge();
-  const isLoading =
-    ["loading", "submitting"].includes(fetcher.state) &&
-    fetcher.formMethod === "POST";
-  const productId = fetcher.data?.product?.id.replace(
-    "gid://shopify/Product/",
-    "",
-  );
-
+  // Fetch shop domain from window.Shopify if available
   useEffect(() => {
-    if (productId) {
-      shopify.toast.show("Product created");
+    // Try to get shop from App Bridge or window.Shopify
+    let shopDomain = "";
+    if (window.Shopify && window.Shopify.shop) {
+      shopDomain = window.Shopify.shop;
+    } else if (window.location.search.includes("shop=")) {
+      const params = new URLSearchParams(window.location.search);
+      shopDomain = params.get("shop") || "";
     }
-  }, [productId, shopify]);
-  const generateProduct = () => fetcher.submit({}, { method: "POST" });
+    setShop(shopDomain);
+
+    if (shopDomain) {
+      // Fetch settings
+      const fetchSettings = async () => {
+        setLoading(true);
+        try {
+          const rawQuery = `shop=${shopDomain}`;
+          const hmac = await getHmac(rawQuery);
+          const res = await fetch(`/api/shop-settings?shop=${encodeURIComponent(shopDomain)}`, {
+            headers: { "x-shop-settings-hmac": hmac },
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setCorner(data.corner || "BOTTOM_RIGHT");
+            setPaddingX(data.paddingX ?? 16);
+            setPaddingY(data.paddingY ?? 16);
+          }
+        } finally {
+          setLoading(false);
+        }
+      };
+      fetchSettings();
+    }
+  }, []);
+
+  // Auto-save on change
+  useEffect(() => {
+    if (!shop || loading) return;
+    const save = async () => {
+      const body = JSON.stringify({ shop, corner, paddingX, paddingY });
+      const hmac = await getHmac(body);
+      await fetch("/api/shop-settings", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-shop-settings-hmac": hmac,
+        },
+        body,
+      });
+    };
+    save();
+  }, [shop, corner, paddingX, paddingY]);
+
+  if (loading) {
+    return (
+      <Page>
+        <BlockStack gap="500" align="center">
+          <Spinner accessibilityLabel="Loading settings" size="large" />
+        </BlockStack>
+      </Page>
+    );
+  }
+
+  // Live preview: send settings to iframe
+  useEffect(() => {
+    const iframe = document.getElementById("sticky-preview-iframe") as HTMLIFrameElement | null;
+    if (iframe && iframe.contentWindow) {
+      iframe.contentWindow.postMessage(
+        { corner, paddingX, paddingY },
+        "*"
+      );
+    }
+  }, [corner, paddingX, paddingY]);
 
   return (
     <Page>
-      <TitleBar title="Remix app template">
-        <button variant="primary" onClick={generateProduct}>
-          Generate a product
-        </button>
-      </TitleBar>
-      <BlockStack gap="500">
-        <Layout>
-          <Layout.Section>
-            <Card>
-              <BlockStack gap="500">
-                <BlockStack gap="200">
-                  <Text as="h2" variant="headingMd">
-                    Congrats on creating a new Shopify app 🎉
-                  </Text>
-                  <Text variant="bodyMd" as="p">
-                    This embedded app template uses{" "}
-                    <Link
-                      url="https://shopify.dev/docs/apps/tools/app-bridge"
-                      target="_blank"
-                      removeUnderline
-                    >
-                      App Bridge
-                    </Link>{" "}
-                    interface examples like an{" "}
-                    <Link url="/app/additional" removeUnderline>
-                      additional page in the app nav
-                    </Link>
-                    , as well as an{" "}
-                    <Link
-                      url="https://shopify.dev/docs/api/admin-graphql"
-                      target="_blank"
-                      removeUnderline
-                    >
-                      Admin GraphQL
-                    </Link>{" "}
-                    mutation demo, to provide a starting point for app
-                    development.
-                  </Text>
-                </BlockStack>
-                <BlockStack gap="200">
-                  <Text as="h3" variant="headingMd">
-                    Get started with products
-                  </Text>
-                  <Text as="p" variant="bodyMd">
-                    Generate a product with GraphQL and get the JSON output for
-                    that product. Learn more about the{" "}
-                    <Link
-                      url="https://shopify.dev/docs/api/admin-graphql/latest/mutations/productCreate"
-                      target="_blank"
-                      removeUnderline
-                    >
-                      productCreate
-                    </Link>{" "}
-                    mutation in our API references.
-                  </Text>
-                </BlockStack>
-                <InlineStack gap="300">
-                  <Button loading={isLoading} onClick={generateProduct}>
-                    Generate a product
-                  </Button>
-                  {fetcher.data?.product && (
-                    <Button
-                      url={`shopify:admin/products/${productId}`}
-                      target="_blank"
-                      variant="plain"
-                    >
-                      View product
-                    </Button>
-                  )}
-                </InlineStack>
-                {fetcher.data?.product && (
-                  <>
-                    <Text as="h3" variant="headingMd">
-                      {" "}
-                      productCreate mutation
-                    </Text>
-                    <Box
-                      padding="400"
-                      background="bg-surface-active"
-                      borderWidth="025"
-                      borderRadius="200"
-                      borderColor="border"
-                      overflowX="scroll"
-                    >
-                      <pre style={{ margin: 0 }}>
-                        <code>
-                          {JSON.stringify(fetcher.data.product, null, 2)}
-                        </code>
-                      </pre>
-                    </Box>
-                    <Text as="h3" variant="headingMd">
-                      {" "}
-                      productVariantsBulkUpdate mutation
-                    </Text>
-                    <Box
-                      padding="400"
-                      background="bg-surface-active"
-                      borderWidth="025"
-                      borderRadius="200"
-                      borderColor="border"
-                      overflowX="scroll"
-                    >
-                      <pre style={{ margin: 0 }}>
-                        <code>
-                          {JSON.stringify(fetcher.data.variant, null, 2)}
-                        </code>
-                      </pre>
-                    </Box>
-                  </>
-                )}
-              </BlockStack>
-            </Card>
-          </Layout.Section>
-          <Layout.Section variant="oneThird">
-            <BlockStack gap="500">
-              <Card>
-                <BlockStack gap="200">
-                  <Text as="h2" variant="headingMd">
-                    App template specs
-                  </Text>
-                  <BlockStack gap="200">
-                    <InlineStack align="space-between">
-                      <Text as="span" variant="bodyMd">
-                        Framework
-                      </Text>
-                      <Link
-                        url="https://remix.run"
-                        target="_blank"
-                        removeUnderline
-                      >
-                        Remix
-                      </Link>
-                    </InlineStack>
-                    <InlineStack align="space-between">
-                      <Text as="span" variant="bodyMd">
-                        Database
-                      </Text>
-                      <Link
-                        url="https://www.prisma.io/"
-                        target="_blank"
-                        removeUnderline
-                      >
-                        Prisma
-                      </Link>
-                    </InlineStack>
-                    <InlineStack align="space-between">
-                      <Text as="span" variant="bodyMd">
-                        Interface
-                      </Text>
-                      <span>
-                        <Link
-                          url="https://polaris.shopify.com"
-                          target="_blank"
-                          removeUnderline
-                        >
-                          Polaris
-                        </Link>
-                        {", "}
-                        <Link
-                          url="https://shopify.dev/docs/apps/tools/app-bridge"
-                          target="_blank"
-                          removeUnderline
-                        >
-                          App Bridge
-                        </Link>
-                      </span>
-                    </InlineStack>
-                    <InlineStack align="space-between">
-                      <Text as="span" variant="bodyMd">
-                        API
-                      </Text>
-                      <Link
-                        url="https://shopify.dev/docs/api/admin-graphql"
-                        target="_blank"
-                        removeUnderline
-                      >
-                        GraphQL API
-                      </Link>
-                    </InlineStack>
-                  </BlockStack>
-                </BlockStack>
-              </Card>
-              <Card>
-                <BlockStack gap="200">
-                  <Text as="h2" variant="headingMd">
-                    Next steps
-                  </Text>
-                  <List>
-                    <List.Item>
-                      Build an{" "}
-                      <Link
-                        url="https://shopify.dev/docs/apps/getting-started/build-app-example"
-                        target="_blank"
-                        removeUnderline
-                      >
-                        {" "}
-                        example app
-                      </Link>{" "}
-                      to get started
-                    </List.Item>
-                    <List.Item>
-                      Explore Shopify’s API with{" "}
-                      <Link
-                        url="https://shopify.dev/docs/apps/tools/graphiql-admin-api"
-                        target="_blank"
-                        removeUnderline
-                      >
-                        GraphiQL
-                      </Link>
-                    </List.Item>
-                  </List>
-                </BlockStack>
-              </Card>
+      <TitleBar title="Sticky Add to Cart Settings" />
+      <Layout>
+        <Layout.Section>
+          <Card>
+            <BlockStack gap="400">
+              <Text as="h2" variant="headingMd">
+                Sticky Add to Cart Button Settings
+              </Text>
+              <Select
+                label="Corner"
+                options={CORNER_OPTIONS}
+                value={corner}
+                onChange={setCorner}
+              />
+              <TextField
+                label="Padding X (px)"
+                type="number"
+                value={paddingX.toString()}
+                onChange={(v) => setPaddingX(Number(v))}
+                autoComplete="off"
+              />
+              <TextField
+                label="Padding Y (px)"
+                type="number"
+                value={paddingY.toString()}
+                onChange={(v) => setPaddingY(Number(v))}
+                autoComplete="off"
+              />
             </BlockStack>
-          </Layout.Section>
-        </Layout>
-      </BlockStack>
+          </Card>
+        </Layout.Section>
+        <Layout.Section>
+          <Card>
+            <BlockStack gap="200">
+              <Text as="h3" variant="headingMd">
+                Live Preview
+              </Text>
+              <div style={{ border: "1px solid #eee", borderRadius: 8, overflow: "hidden", height: 400 }}>
+                <iframe
+                  id="sticky-preview-iframe"
+                  src="/preview.html"
+                  title="Sticky Add to Cart Preview"
+                  style={{ width: "100%", height: 400, border: "none" }}
+                />
+              </div>
+            </BlockStack>
+          </Card>
+        </Layout.Section>
+      </Layout>
     </Page>
   );
+}
+
+// Utility: get HMAC for a string using the same secret as the backend
+async function getHmac(message: string): Promise<string> {
+  // In production, this should be done server-side or via a secure endpoint.
+  // For demo/dev, use a placeholder or fetch from a secure endpoint.
+  // Here, we just return a dummy value for local dev.
+  return "dummy-hmac";
 }

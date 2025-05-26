@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Sticky Add to Cart Preview</title>
+  <style>
+    body { font-family: sans-serif; margin: 0; padding: 0; }
+    #preview-container {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      background: #f8f8f8;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+    }
+    #sticky-atc {
+      position: fixed;
+      border-radius: 8px;
+      background: #111;
+      color: #fff;
+      padding: 12px 32px;
+      font-size: 18px;
+      left: 16px;
+      bottom: 16px;
+      transition: all 0.3s;
+      z-index: 100;
+    }
+  </style>
+</head>
+<body>
+  <div id="preview-container">
+    <div id="sticky-atc">Add to Cart</div>
+  </div>
+  <script>
+    window.addEventListener("message", (event) => {
+      if (!event.data || typeof event.data !== "object") return;
+      const { corner, paddingX, paddingY } = event.data;
+      const atc = document.getElementById("sticky-atc");
+      if (!atc) return;
+      // Position
+      let style = {};
+      switch (corner) {
+        case "TOP_LEFT":
+          style = { top: paddingY + "px", left: paddingX + "px", right: "auto", bottom: "auto" };
+          break;
+        case "TOP_RIGHT":
+          style = { top: paddingY + "px", right: paddingX + "px", left: "auto", bottom: "auto" };
+          break;
+        case "BOTTOM_LEFT":
+          style = { bottom: paddingY + "px", left: paddingX + "px", right: "auto", top: "auto" };
+          break;
+        case "BOTTOM_RIGHT":
+        default:
+          style = { bottom: paddingY + "px", right: paddingX + "px", left: "auto", top: "auto" };
+      }
+      Object.assign(atc.style, style);
+    });
+  </script>
+</body>
+</html>

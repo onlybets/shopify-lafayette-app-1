@@ -1,0 +1,14 @@
+{%- comment -%}
+App Embed block for Sticky Add to Cart extension.
+This file will be used to inject the sticky.js script and expose settings.
+{%- endcomment -%}
+
+<script>
+  window.__SHOP_SETTINGS__ = {
+    shop: "{{ shop.domain | escape }}",
+    corner: "{{ block.settings.corner | escape }}",
+    paddingX: {{ block.settings.padding_x | default: 0 }},
+    paddingY: {{ block.settings.padding_y | default: 0 }}
+  };
+</script>
+<script src="{{ 'sticky.js' | asset_url }}"></script>
