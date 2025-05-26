@@ -46,12 +46,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // Checkbox: value is "on" if checked, null if not present
   const isEnabled = formData.get("isEnabled") === "on";
   const buttonText = formData.get("buttonText") as string;
+  const paddingX = parseInt(formData.get("paddingX") as string, 10) || 20;
+  const paddingY = parseInt(formData.get("paddingY") as string, 10) || 20;
 
   try {
     await db.shopSettings.upsert({
       where: { shop: session.shop },
-      update: { position, isEnabled, buttonText },
-      create: { shop: session.shop, position, isEnabled, buttonText },
+      update: { position, isEnabled, buttonText, paddingX, paddingY },
+      create: { shop: session.shop, position, isEnabled, buttonText, paddingX, paddingY },
     });
     return json({ success: true, message: "Settings saved successfully!" });
   } catch (error) {
@@ -68,6 +70,8 @@ export default function SettingsPage() {
   const [currentPosition, setCurrentPosition] = useState(settings?.position || "bottom-right");
   const [isEnabled, setIsEnabled] = useState(settings?.isEnabled !== undefined ? settings.isEnabled : true);
   const [buttonText, setButtonText] = useState(settings?.buttonText || "Add to Cart");
+  const [paddingX, setPaddingX] = useState(settings?.paddingX ?? 20);
+  const [paddingY, setPaddingY] = useState(settings?.paddingY ?? 20);
   const [showBanner, setShowBanner] = useState(true);
 
   // Update state if loader data changes (e.g., after form submission and revalidation)
@@ -76,6 +80,8 @@ export default function SettingsPage() {
       setCurrentPosition(settings.position);
       setIsEnabled(settings.isEnabled);
       setButtonText(settings.buttonText);
+      setPaddingX(settings.paddingX ?? 20);
+      setPaddingY(settings.paddingY ?? 20);
     }
   }, [settings]);
 
@@ -115,9 +121,26 @@ export default function SettingsPage() {
                 <BlockStack gap="200">
                   <label style={{ fontWeight: 500, marginBottom: 4 }}>Position</label>
                   <RadioButton
+                    label="Top Left"
+                    id="top-left"
+                    name="position"
+                    value="top-left"
+                    checked={currentPosition === "top-left"}
+                    onChange={() => setCurrentPosition("top-left")}
+                  />
+                  <RadioButton
+                    label="Top Right"
+                    id="top-right"
+                    name="position"
+                    value="top-right"
+                    checked={currentPosition === "top-right"}
+                    onChange={() => setCurrentPosition("top-right")}
+                  />
+                  <RadioButton
                     label="Bottom Left"
                     id="bottom-left"
                     name="position"
+                    value="bottom-left"
                     checked={currentPosition === "bottom-left"}
                     onChange={() => setCurrentPosition("bottom-left")}
                   />
@@ -125,15 +148,19 @@ export default function SettingsPage() {
                     label="Bottom Right"
                     id="bottom-right"
                     name="position"
+                    value="bottom-right"
                     checked={currentPosition === "bottom-right"}
                     onChange={() => setCurrentPosition("bottom-right")}
                   />
                 </BlockStack>
+                {/* Hidden input to ensure unchecked checkbox submits false */}
+                <input type="hidden" name="isEnabled" value="off" />
                 <Checkbox
                   label="Enable Sticky Add to Cart Bar"
                   checked={isEnabled}
                   onChange={setIsEnabled}
                   name="isEnabled"
+                  value="on"
                 />
                 <TextField
                   label="Button Text"
@@ -142,30 +169,27 @@ export default function SettingsPage() {
                   autoComplete="off"
                   name="buttonText"
                 />
-                <div>
-                  <Button
-                    submit
-                    variant="primary"
-                    loading={isLoading}
-                    disabled={isLoading}
-                  >
-                    Save
-                  </Button>
-                </div>
+                <TextField
+                  label="Horizontal Padding (px)"
+                  type="number"
+                  value={String(paddingX)}
+                  onChange={(value) => setPaddingX(parseInt(value, 10) || 0)}
+                  autoComplete="off"
+                  name="paddingX"
+                />
+                <TextField
+                  label="Vertical Padding (px)"
+                  type="number"
+                  value={String(paddingY)}
+                  onChange={(value) => setPaddingY(parseInt(value, 10) || 0)}
+                  autoComplete="off"
+                  name="paddingY"
+                />
               </BlockStack>
             </Form>
           </Card>
         </Layout.Section>
-        <Layout.Section variant="oneThird">
-          <Card>
-            <BlockStack gap="200">
-              <h3 style={{ fontWeight: 600, margin: 0 }}>Preview</h3>
-              <p>Position: {currentPosition}</p>
-              <p>Enabled: {isEnabled ? "Yes" : "No"}</p>
-              <p>Button Text: {buttonText}</p>
-            </BlockStack>
-          </Card>
-        </Layout.Section>
+        {/* Preview section removed as per requirements */}
       </Layout>
     </Page>
   );

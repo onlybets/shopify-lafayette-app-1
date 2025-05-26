@@ -51,6 +51,8 @@ model ShopSettings {
   position   String   @default("bottom-right")
   isEnabled  Boolean  @default(true)
   buttonText String   @default("Add to Cart")
+  paddingX   Int      @default(20)
+  paddingY   Int      @default(20)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 }

@@ -31,18 +31,26 @@
     );
   }
 
-  // Set button position based on settings.position
-  function setButtonPosition(btn, position) {
+  // Set button position based on settings.position and padding
+  function setButtonPosition(btn, position, paddingX = 20, paddingY = 20) {
     btn.style.top = btn.style.right = btn.style.bottom = btn.style.left = "auto";
     switch (position) {
+      case "top-left":
+        btn.style.top = paddingY + "px";
+        btn.style.left = paddingX + "px";
+        break;
+      case "top-right":
+        btn.style.top = paddingY + "px";
+        btn.style.right = paddingX + "px";
+        break;
       case "bottom-left":
-        btn.style.bottom = "20px";
-        btn.style.left = "20px";
+        btn.style.bottom = paddingY + "px";
+        btn.style.left = paddingX + "px";
         break;
       case "bottom-right":
       default:
-        btn.style.bottom = "20px";
-        btn.style.right = "20px";
+        btn.style.bottom = paddingY + "px";
+        btn.style.right = paddingX + "px";
         break;
     }
   }
@@ -67,7 +75,7 @@
       document.body.appendChild(btn);
     }
     btn.innerText = settings.buttonText || "Add to Cart";
-    setButtonPosition(btn, settings.position);
+    setButtonPosition(btn, settings.position, settings.paddingX, settings.paddingY);
 
     btn.onclick = async function () {
       const productId = getProductId();
@@ -102,7 +110,7 @@
     const btn = document.getElementById("lafayette-sticky-atc");
     if (!btn) return;
     btn.style.display = isNativeATCVisible() ? "none" : "block";
-    setButtonPosition(btn, settings.position);
+    setButtonPosition(btn, settings.position, settings.paddingX, settings.paddingY);
   }
 
   // IntersectionObserver fallback: poll every 500ms
@@ -139,7 +147,7 @@
             const btn = document.getElementById("lafayette-sticky-atc");
             if (!btn) return;
             btn.style.display = entry.isIntersecting ? "none" : "block";
-            setButtonPosition(btn, settings.position);
+            setButtonPosition(btn, settings.position, settings.paddingX, settings.paddingY);
           },
           { threshold: 0.01 }
         );
@@ -155,13 +163,20 @@
   // Listen for settings updates (for live preview or dynamic updates)
   window.addEventListener("message", (event) => {
     if (!event.data || typeof event.data !== "object") return;
-    const { position, isEnabled, buttonText } = event.data;
+    const { position, isEnabled, buttonText, paddingX, paddingY } = event.data;
     const btn = document.getElementById("lafayette-sticky-atc");
     if (btn) {
       if (typeof isEnabled === "boolean" && !isEnabled) {
         btn.remove();
       } else {
-        if (position) setButtonPosition(btn, position);
+        if (position || paddingX !== undefined || paddingY !== undefined) {
+          setButtonPosition(
+            btn,
+            position || btn.dataset.position || "bottom-right",
+            paddingX !== undefined ? paddingX : (btn.dataset.paddingX ? parseInt(btn.dataset.paddingX, 10) : 20),
+            paddingY !== undefined ? paddingY : (btn.dataset.paddingY ? parseInt(btn.dataset.paddingY, 10) : 20)
+          );
+        }
         if (buttonText) btn.innerText = buttonText;
       }
     }

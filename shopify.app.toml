@@ -3,7 +3,7 @@
 client_id = "9630d826753a3841406f585c30ec05ee"
 name = "lafayette-app-1"
 handle = "lafayette-app-1"
-application_url = "https://handle-preservation-witness-foul.trycloudflare.com"
+application_url = "https://oo-alternatives-antarctica-dallas.trycloudflare.com"
 embedded = true
 
 [build]
@@ -27,9 +27,9 @@ scopes = "write_products,read_products,write_themes,read_themes,write_script_tag
 
 [auth]
 redirect_urls = [
-  "https://handle-preservation-witness-foul.trycloudflare.com/auth/callback",
-  "https://handle-preservation-witness-foul.trycloudflare.com/auth/shopify/callback",
-  "https://handle-preservation-witness-foul.trycloudflare.com/api/auth/callback"
+  "https://oo-alternatives-antarctica-dallas.trycloudflare.com/auth/callback",
+  "https://oo-alternatives-antarctica-dallas.trycloudflare.com/auth/shopify/callback",
+  "https://oo-alternatives-antarctica-dallas.trycloudflare.com/api/auth/callback"
 ]
 
 [pos]
