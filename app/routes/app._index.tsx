@@ -90,6 +90,18 @@ export default function ShopSettingsPage() {
     save();
   }, [shop, corner, paddingX, paddingY]);
 
+  // Live preview: send settings to iframe
+  useEffect(() => {
+    if (loading) return;
+    const iframe = document.getElementById("sticky-preview-iframe") as HTMLIFrameElement | null;
+    if (iframe && iframe.contentWindow) {
+      iframe.contentWindow.postMessage(
+        { corner, paddingX, paddingY },
+        "*"
+      );
+    }
+  }, [loading, corner, paddingX, paddingY]);
+
   if (loading) {
     return (
       <Page>
@@ -99,17 +111,6 @@ export default function ShopSettingsPage() {
       </Page>
     );
   }
-
-  // Live preview: send settings to iframe
-  useEffect(() => {
-    const iframe = document.getElementById("sticky-preview-iframe") as HTMLIFrameElement | null;
-    if (iframe && iframe.contentWindow) {
-      iframe.contentWindow.postMessage(
-        { corner, paddingX, paddingY },
-        "*"
-      );
-    }
-  }, [corner, paddingX, paddingY]);
 
   return (
     <Page>
